@@ -54,6 +54,7 @@ def get_matches_by_ids(matches, puuid):
     assist_totals = []
     death_totals = []
     kill_totals = []
+    kdas = []
     champions = []
     champ_lvls = []
     gold_totals = []
@@ -73,16 +74,24 @@ def get_matches_by_ids(matches, puuid):
             data = r.json()
             match_id = data['metadata']['matchId']
             matches_ids.append(match_id)
+
             game_creation = str(data['info']['gameCreation'])[:-3]  # UNIX timestamp
             # Convert unix timestamp to datetime
             ts = int(game_creation)
             game_creation = datetime.utcfromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
             creations.append(game_creation)
+
             game_duration = data['info']['gameDuration']  # seconds
             # Convert seconds to minutes:seconds, older matches have 7 digits
-            # min, sec = divmod(game_duration, 60)
-            # game_duration = "%02d:%02d" % (min, sec)
+            if len(str(game_duration)) < 7:
+                min, sec = divmod(game_duration, 60)
+                game_duration = "%02d:%02d" % (min, sec)
+            else:
+                sec, ms = divmod(game_duration, 1000)
+                min, sec = divmod(sec, 60)
+                game_duration = "%02d:%02d" % (min, sec)
             durations.append(game_duration)
+
             queue_id = data['info']['queueId']  # 420 = ranked, 400 = normal draft
             queue_ids.append(queue_id)
 
@@ -110,6 +119,8 @@ def get_matches_by_ids(matches, puuid):
                     cs_totals.append(cs)
                     win = p['win']  # bool
                     results.append(win)
+                    kda = calc_kda_ratio(kills, assists, deaths)
+                    kdas.append(kda)
     matches_info = {
         'match_id': matches_ids,
         'created': creations,
@@ -122,6 +133,7 @@ def get_matches_by_ids(matches, puuid):
         'kills': kill_totals,
         'deaths': death_totals,
         'assists': assist_totals,
+        'kda': kdas,
         'tot_dmg_to_champs': champ_dmgs,
         'cs': cs_totals,
         'gold_earned': gold_totals,
@@ -130,12 +142,23 @@ def get_matches_by_ids(matches, puuid):
     return df
 
 
+def calc_kda_ratio(kills, assists, deaths):
+    if deaths != 0:
+        return round((kills + assists) / deaths, 2)
+    else:
+        print(f"Perfect KDA -- K+A: {kills+assists}")
+        return None
+
+
 def main():
-    NAME = "Bushidobrownn"
-    pid = get_summoner_puuid_by_name(name=NAME)
-    match_ids = get_match_ids(pid, count=20)
+    pid = get_summoner_puuid_by_name(name="Bushidobrownn")
+    match_ids = get_match_ids(pid, count=5)
     df = get_matches_by_ids(match_ids, pid)
     print(tabulate(df, headers='keys', tablefmt='psql'))
+    print(f"Avg. kills: {df['kills'].mean()}")
+    print(f"Avg. deaths: {df['deaths'].mean()}")
+    print(f"Avg. assists: {df['assists'].mean()}")
+    print(f"Avg. KDA: {df['kda'].mean()}")
 
 
 if __name__ == "__main__":
