@@ -19,7 +19,7 @@ def get_summoner_puuid_by_name(name="Liggs"):
     """
     url = f"{BASE_URL_V4}/summoner/v4/summoners/by-name/{name}"
     r = requests.get(url, headers=HEADERS)
-    print(f"Requesting PUUID for {name}...")
+    print(f"\nRequesting PUUID for {name}...")
     if r.status_code != 200:
         print(r.status_code)
     puuid = r.json()['puuid']
@@ -45,7 +45,7 @@ def get_matches_by_ids(matches, puuid):
 
     Endpoint: GET /match/v5/matches/{matchId}
     """
-    print("Retrieving Player's stats for each match...")
+    print("Retrieving Player's stats for each match...\n")
     # Empty lists for dataframe creation
     matches_ids = []
     creations = []
@@ -64,6 +64,7 @@ def get_matches_by_ids(matches, puuid):
     results = []
     for m_id in matches:
         url = f"{BASE_URL_V5}/match/v5/matches/{m_id}"
+        print(f"Making request: {m_id}")
         r = requests.get(url, headers=HEADERS)
         if r.status_code != 200:
             status = r.json()
@@ -78,7 +79,7 @@ def get_matches_by_ids(matches, puuid):
             game_creation = str(data['info']['gameCreation'])[:-3]  # UNIX timestamp
             # Convert unix timestamp to datetime
             ts = int(game_creation)
-            game_creation = datetime.utcfromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+            game_creation = datetime.utcfromtimestamp(ts).strftime('%Y-%m-%d %H:%M')
             creations.append(game_creation)
 
             game_duration = data['info']['gameDuration']  # seconds
@@ -121,6 +122,8 @@ def get_matches_by_ids(matches, puuid):
                     results.append(win)
                     kda = calc_kda_ratio(kills, assists, deaths)
                     kdas.append(kda)
+
+    # Create dataframe
     matches_info = {
         'match_id': matches_ids,
         'created': creations,
@@ -146,19 +149,44 @@ def calc_kda_ratio(kills, assists, deaths):
     if deaths != 0:
         return round((kills + assists) / deaths, 2)
     else:
-        print(f"Perfect KDA -- K+A: {kills+assists}")
         return None
+
+
+def calc_win_rate(dataframe):
+    win_rate = round((dataframe['win'].value_counts()[1] / len(dataframe)) * 100, 2)    # 0 = F, 1 = T
+    print(f"Win rate: {win_rate}%")
+    return win_rate
+
+
+def unique_champs_played(dataframe):
+    champions = {}
+    played = dataframe['champion']
+    for c in played:
+        if c not in champions.keys():
+            champions[c] = 1
+        else:
+            champions[c] += 1
+    # Calculate percent of games
+    for c in champions.keys():
+        count = champions[c]
+        pct = round((count / len(played)) * 100, 2)
+        champions[c] = (count, pct)
+    return champions
 
 
 def main():
     pid = get_summoner_puuid_by_name(name="Bushidobrownn")
     match_ids = get_match_ids(pid, count=5)
     df = get_matches_by_ids(match_ids, pid)
+    print("\nResults:")
     print(tabulate(df, headers='keys', tablefmt='psql'))
+    print(f"Game count: {len(df)}")
     print(f"Avg. kills: {df['kills'].mean()}")
     print(f"Avg. deaths: {df['deaths'].mean()}")
     print(f"Avg. assists: {df['assists'].mean()}")
     print(f"Avg. KDA: {df['kda'].mean()}")
+    calc_win_rate(df)
+    print(unique_champs_played(df))
 
 
 if __name__ == "__main__":
