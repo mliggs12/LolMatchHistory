@@ -1,5 +1,6 @@
 """Main interface for the LoLMatchHistory."""
 import os
+import json
 from datetime import datetime
 import requests
 from tabulate import tabulate
@@ -145,6 +146,45 @@ def get_matches_by_ids(matches, puuid):
     return df
 
 
+def timeline_by_match_id(match_id, puuid):
+    endpoint = f"{BASE_URL_V5}/match/v5/matches/{match_id}/timeline"
+    data = requests.get(endpoint, headers=HEADERS).json()
+    # Retrieve player's participant ID for the match
+    participants = data['metadata']['participants']
+    for p in range(len(participants)):
+        if participants[p] == puuid:
+            p_id = str(p + 1)
+            break
+    # Retrieve the player's participant frames from the match timeline
+    tl_frames = data['info']['frames']
+    f_count = 0
+    for tl_f in tl_frames:
+        f_count += 1
+        timestamp = tl_f['timestamp']
+        sec, ms = divmod(timestamp, 1000)
+        min, sec = divmod(sec, 60)
+        timestamp = "%02d:%02d.%02d" % (min, sec, ms)
+        print(f"\nFrame #{f_count} -- End Timestamp: {timestamp}")
+        # Parsing player's events
+        p_events = []
+        events = tl_f['events']
+        for e in events:
+            if 'participantId' in e.keys() and e['participantId'] == int(p_id):
+                sec, ms = divmod(e['timestamp'], 1000)
+                min, sec = divmod(sec, 60)
+                e['timestamp'] = "%02d:%02d.%02d" % (min, sec, ms)
+                p_events.append(e)
+        print("Player events:")
+        print(json.dumps(p_events, indent=4))
+        # Parsing player's frames
+        p_frames = tl_f['participantFrames'][p_id]
+        print("Player stats:")
+        print(json.dumps(p_frames, indent=4))
+
+    print("\nFrame count:", f_count)
+    return f_count
+
+
 def calc_kda_ratio(kills, assists, deaths):
     if deaths != 0:
         return round((kills + assists) / deaths, 2)
@@ -178,15 +218,17 @@ def main():
     pid = get_summoner_puuid_by_name(name="Bushidobrownn")
     match_ids = get_match_ids(pid, count=5)
     df = get_matches_by_ids(match_ids, pid)
+    # df = df[df['champion'] == "Jhin"]    # only Jhin games
     print("\nResults:")
     print(tabulate(df, headers='keys', tablefmt='psql'))
     print(f"Game count: {len(df)}")
-    print(f"Avg. kills: {df['kills'].mean()}")
-    print(f"Avg. deaths: {df['deaths'].mean()}")
-    print(f"Avg. assists: {df['assists'].mean()}")
-    print(f"Avg. KDA: {df['kda'].mean()}")
     calc_win_rate(df)
-    print(unique_champs_played(df))
+    print(f"Avg. kills: {round(df['kills'].mean(), 2)}")
+    print(f"Avg. deaths: {round(df['deaths'].mean(), 2)}")
+    print(f"Avg. assists: {round(df['assists'].mean(), 2)}")
+    print(f"Avg. KDA: {round(df['kda'].mean(), 2)}")
+    print("Champions played:", unique_champs_played(df))
+    timeline_by_match_id("NA1_4096965623", pid)
 
 
 if __name__ == "__main__":
